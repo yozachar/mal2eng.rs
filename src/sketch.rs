@@ -1,7 +1,8 @@
+use fancy_regex::Regex as FancyRegex;
 use regex::Regex;
 use std::collections::HashMap;
 
-pub struct Mal2eng {
+pub struct CharacterMap {
     vowels: HashMap<&'static str, &'static str>,
     compounds: HashMap<&'static str, &'static str>,
     consonants: HashMap<&'static str, &'static str>,
@@ -9,10 +10,23 @@ pub struct Mal2eng {
     modifiers: HashMap<&'static str, &'static str>,
 }
 
-impl Mal2eng {
-    pub fn new() -> Mal2eng {
+impl CharacterMap {
+    /// # CharacterMap::init()
+    /// Initializes Malayalam to English transliterator
+    ///
+    /// Usage:
+    /// ```rust
+    /// use mal2eng::CharacterMap;
+    ///
+    /// fn main() {
+    ///     let m2e = CharacterMap::init();
+    ///     // ... rest of the code ...
+    ///     // ... refer `m2e.transliterate` ...
+    /// }
+    /// ````
+    pub fn init() -> CharacterMap {
         let mut vowels_map = HashMap::new();
-        for (key, val) in vec![
+        for (key, val) in [
             ("അ", "a"),
             ("ആ", "aa"),
             ("ഇ", "i"),
@@ -30,7 +44,7 @@ impl Mal2eng {
             vowels_map.insert(key, val);
         }
         let mut compounds_map = HashMap::new();
-        for (key, val) in vec![
+        for (key, val) in [
             ("ക്ക", "kk"),
             ("ഗ്ഗ", "gg"),
             ("ങ്ങ", "ng"),
@@ -65,7 +79,7 @@ impl Mal2eng {
             compounds_map.insert(key, val);
         }
         let mut consonants_map = HashMap::new();
-        for (key, val) in vec![
+        for (key, val) in [
             ("ക", "k"),
             ("ഖ", "kh"),
             ("ഗ", "g"),
@@ -106,7 +120,7 @@ impl Mal2eng {
             consonants_map.insert(key, val);
         }
         let mut chill_map = HashMap::new();
-        for (key, val) in vec![
+        for (key, val) in [
             ("ൽ", "l"),
             ("ൾ", "l"),
             ("ൺ", "n"),
@@ -117,7 +131,7 @@ impl Mal2eng {
             chill_map.insert(key, val);
         }
         let mut modifiers_map = HashMap::new();
-        for (key, val) in vec![
+        for (key, val) in [
             ("ു്", "u"),
             ("ാ", "aa"),
             ("ി", "i"),
@@ -136,7 +150,7 @@ impl Mal2eng {
         ] {
             modifiers_map.insert(key, val);
         }
-        Mal2eng {
+        CharacterMap {
             vowels: vowels_map,
             compounds: compounds_map,
             consonants: consonants_map,
@@ -145,7 +159,8 @@ impl Mal2eng {
         }
     }
 
-    fn replace_modified_glyphs(&self, glyphs: HashMap<&str, &str>, given_text: String) -> String {
+    /// # replace_modified_glyphs
+    fn replace_modified_glyphs(&self, glyphs: &HashMap<&str, &str>, given_text: String) -> String {
         let gk = glyphs.keys().map(|&k| k).collect::<Vec<_>>().join("|");
         let mk = self
             .modifiers
@@ -153,88 +168,129 @@ impl Mal2eng {
             .map(|&k| k)
             .collect::<Vec<_>>()
             .join("|");
-        let exp = regex::Regex::new(&format!("({gk})({mk})")).unwrap();
+        let exp = regex::Regex::new(&format!("({gk})({mk})"))
+            .expect(&format!("E@{}: Unable to build regex", line!()));
+
         let mut modified_text = given_text.to_owned();
-        for mch in exp.captures_iter(&given_text) {
-            let matched_str = mch.get(0).unwrap().as_str();
-            let matched_glyph = glyphs.get(mch.get(1).unwrap().as_str()).unwrap();
-            let matched_modifier = self.modifiers.get(mch.get(2).unwrap().as_str()).unwrap();
+
+        for cap in exp.captures_iter(&given_text) {
+            let matched_str = cap.get(0).unwrap().as_str();
+            let matched_glyph = glyphs.get(cap.get(1).unwrap().as_str()).unwrap();
+            let matched_modifier = self.modifiers.get(cap.get(2).unwrap().as_str()).unwrap();
             modified_text =
                 modified_text.replace(matched_str, &format!("{matched_glyph}{matched_modifier}"))
         }
+
         modified_text
     }
 
-    pub fn render(&self, given_text: String) -> String {
+    /// # render
+    fn render(&self, given_text: String, caps: bool) -> String {
         let mut modified_text = given_text.to_owned();
+
         // replace zero width non joiners
         // \u{200C} == \xE2\x80\x8C
-        modified_text = Regex::new("\u{200C}")
-            .unwrap()
+        modified_text = Regex::new("\u{200c}")
+            .expect(&format!("E@{}: Unable to build regex", line!()))
             .replace_all(&modified_text, "")
             .to_string();
-        modified_text = self.replace_modified_glyphs(self.compounds.clone(), modified_text);
-        modified_text = self.replace_modified_glyphs(self.vowels.clone(), modified_text);
-        modified_text = self.replace_modified_glyphs(self.consonants.clone(), modified_text);
-        println!("{}", modified_text);
+
+        modified_text = self.replace_modified_glyphs(&self.compounds, modified_text);
+        modified_text = self.replace_modified_glyphs(&self.vowels, modified_text);
+        modified_text = self.replace_modified_glyphs(&self.consonants, modified_text);
+
         // replace unmodified compounds
-        for (key, val) in self.compounds.clone().into_iter() {
+        for (key, val) in &self.compounds {
             // compounds ending in chandrakkala but not at the end of the word
-            modified_text = Regex::new(&(key.to_string() + "്([\\w])"))
-                .unwrap()
-                .replace_all(&modified_text, &(val.to_string() + "$1"))
+            modified_text = Regex::new(&format!("{key}്([\\w])"))
+                .expect(&format!("E@{}: Unable to build regex", line!()))
+                .replace_all(&modified_text, format!("{val}$1"))
                 .to_string();
             // compounds ending in chandrakkala have +'u' pronunciation
-            modified_text =
-                modified_text.replace(&(key.to_string() + "്"), &(val.to_string() + "u"));
+            modified_text = modified_text.replace(&format!("{key}്"), &format!("{val}u"));
             // compounds not ending in chandrakkala have +'a' pronunciation
-            modified_text = modified_text.replace(key, &(val.to_string() + "a"));
+            modified_text = modified_text.replace(key, &format!("{val}a"));
         }
-        println!("{}", modified_text);
+
         // glyphs not ending in chandrakkala have +'a' pronunciation
-        for (key, val) in self.consonants.clone().into_iter() {
-            modified_text = Regex::new(&(key.to_string() + "[^്]"))
-                .unwrap()
-                .replace_all(&modified_text, &(val.to_string() + "a"))
+        for (key, val) in &self.consonants {
+            modified_text = FancyRegex::new(&format!("{key}(?!്)"))
+                .expect(&format!("E@{}: Unable to build regex", line!()))
+                .replace_all(&modified_text, format!("{val}a"))
                 .to_string();
         }
-        println!("{}", modified_text);
+
         // glyphs ending in chandrakkala not at the end of a word
-        for (key, val) in self.consonants.clone().into_iter() {
-            modified_text = Regex::new(&(key.to_string() + "്[^[:space:]\\)\\.;,\"'\\/\\\\%!]"))
-                .unwrap()
-                .replace_all(&modified_text, val)
+        for (key, val) in &self.consonants {
+            modified_text = FancyRegex::new(&format!("{key}്(?![\\s\\)\\.;,\"'\\/\\\\%\\!])"))
+                .expect(&format!("E@{}: Unable to build regex", line!()))
+                .replace_all(&modified_text, format!("{val}"))
                 .to_string();
         }
-        println!("{}", modified_text);
+        // println!("{modified_text}");
+
         // remaining glyphs ending in chandrakkala will be at end of words and have a +'u' pronunciation
-        for (key, val) in self.consonants.clone().into_iter() {
-            modified_text =
-                modified_text.replace(&(key.to_string() + "്"), &(val.to_string() + "u"));
+        for (key, val) in &self.consonants {
+            modified_text = modified_text.replace(&format!("{key}്"), &format!("{val}u"));
         }
+
         // remaining consonants
-        for (key, val) in self.consonants.clone().into_iter() {
+        for (key, val) in &self.consonants {
             modified_text = modified_text.replace(key, val);
         }
+
         // remaining vowels
-        for (key, val) in self.vowels.clone().into_iter() {
+        for (key, val) in &self.vowels {
             modified_text = modified_text.replace(key, val);
         }
+
         // chill glyphs
-        for (key, val) in self.chill.clone().into_iter() {
+        for (key, val) in &self.chill {
             modified_text = modified_text.replace(key, val);
         }
+
         // anusvaram 'am' at the end
         modified_text = modified_text.replace("ം", "m");
+
         // replace any stray modifiers that may have been left out
-        for (key, val) in self.modifiers.clone().into_iter() {
+        for (key, val) in &self.modifiers {
             modified_text = modified_text.replace(key, val);
         }
-        let chunks_regex = Regex::new("([.!?] *)").unwrap();
-        modified_text = chunks_regex
-            .split(&modified_text)
-            .collect::<Vec<_>>()
-            .join("");
+
+        if !caps {
+            return modified_text;
+        }
+
+        // capitalize first letter of modified_text for better aesthetics
         modified_text
+            .split_inclusive(&['.', '!', '?'])
+            .map(|s| capitalize(s.trim()))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// # transliterate
+    /// Transliterate Malayalam to English
+    ///
+    /// Usage:
+    /// ```rust
+    /// use mal2eng::CharacterMap;
+    ///
+    /// fn main() {
+    ///     let m2e = CharacterMap::init();
+    ///     let res = m2e.transliterate("മലയാളത്തിലെ നിങ്ങളുടെ വാക്കുകൾ", true);
+    ///     println!("{}", res);
+    /// }
+    /// ````
+    pub fn transliterate(&self, text: &str, capitalize: bool) -> String {
+        self.render(text.to_string(), capitalize)
+    }
+}
+
+fn capitalize(sentence: &str) -> String {
+    let mut characters = sentence.chars();
+    match characters.next() {
+        None => String::new(),
+        Some(first_char) => first_char.to_uppercase().collect::<String>() + characters.as_str(),
     }
 }

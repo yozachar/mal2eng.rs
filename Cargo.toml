@@ -2,8 +2,17 @@
 name = "mal2eng"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "An algorithm that transliterates Malayalam script to Roman / Latin characters (aka 'Manglish') with reasonable phonemic fairness."
+homepage = "https://github.com/yozachar/mal2eng.rs"
+repository = "https://github.com/yozachar/mal2eng.rs"
+readme = "README.md"
+authors = ["Jovial Joe Jayarson"]
+keywords = ["mal2eng", "manglish", "ml2en", "transliterator"]
+categories = ["encoding", "localization", "text-processing", "value-formatting"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+fancy-regex = "0.13.0"
 regex = "1.10.3"
